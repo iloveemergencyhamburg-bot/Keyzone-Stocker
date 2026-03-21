@@ -2,117 +2,112 @@ import discord
 from discord.ext import commands
 import random
 import os
+import asyncio
 from flask import Flask
 from threading import Thread
 
-# --- 🌐 PHASE 1: INSTANT BIND (Keeps Render Free Tier Happy) ---
-# We use Gunicorn to make the web server extremely stable
+# --- 🌐 PHASE 1: ENTERPRISE WEB SERVER (Instant-Live) ---
 app = Flask('')
-
 @app.route('/')
-def home():
-    return "✅ KeyZone Vault is Online and Stable!"
+def home(): return "🚀 KeyZone Vault: STATUS_OK (Online)"
 
-# This runs standard Health Checks from Render
-@app.route('/healthz')
-def health_check():
-    return "OK", 200
-
-# Function to start the web server in a background thread
 def run_server():
     port = int(os.environ.get("PORT", 8080))
-    # 'threaded=True' ensures it responds immediately even under load
-    app.run(host='0.0.0.0', port=port, threaded=True)
+    app.run(host='0.0.0.0', port=port)
 
-# Start this FIRST before the bot connects
-server_thread = Thread(target=run_server)
-server_thread.daemon = True
-server_thread.start()
-print("✅ Web Server started instantly to prevent Render timeout.")
-
-# --- ⚙️ PHASE 2: BOT CONFIGURATION ---
+# --- ⚙️ PHASE 2: BOT ENGINE & PERSISTENCE ---
 intents = discord.Intents.default()
 intents.message_content = True
-bot = commands.Bot(command_prefix='?', intents=intents)
 
-# 🆔 YOUR CHANNELS
+class KeyZoneBot(commands.Bot):
+    def __init__(self):
+        super().__init__(command_prefix='?', intents=intents, help_command=None)
+
+    async def setup_hook(self):
+        # This keeps the "Buy" buttons working even if the bot restarts!
+        self.add_view(PersistentBuyView())
+
+bot = KeyZoneBot()
+
+# --- 🆔 CONFIGURATION ---
+GUILD_ID = 1482124508491157504
 STEAM_KEYS_CHANNEL = 1484478950490112031
 NEW_GAME_LOGS = 1484479036058243072
-# We don't use stock updates here yet, but keeping the ID
-# STOCK_UPDATES = 1484479103972278354
-
-# 🆔 YOUR STAFF ROLES
+SUPPORT_CHANNEL_ID = 1484479449788583946
 STAFF_ROLES = [1482126539436069035, 1444692167468777615]
 
-# Custom security check for both Owners and Admins
+# --- 🔘 PHASE 3: THE INTERACTIVE UI ---
+class PersistentBuyView(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=None) # Never times out
+
+    @discord.ui.button(
+        label="🛒 Buy This Key", 
+        style=discord.ButtonStyle.danger, # Red to match your theme
+        custom_id="keyzone:buy_button"
+    )
+    async def buy_callback(self, interaction: discord.Interaction, button: discord.ui.Button):
+        support_url = f"https://discord.com/channels/{GUILD_ID}/{SUPPORT_CHANNEL_ID}"
+        
+        # This creates a "Private" response only the buyer can see
+        embed = discord.Embed(
+            title="💳 Ready to Purchase?",
+            description=f"To secure your key, please click the link below to go to our **#support-center** and open a ticket!",
+            color=0x2ecc71 # Green for success
+        )
+        
+        view = discord.ui.View()
+        view.add_item(discord.ui.Button(label="Go to Support Center", url=support_url))
+        
+        await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
+
+# --- 🎮 PHASE 4: THE SHOP COMMANDS ---
 def is_staff():
     async def predicate(ctx):
-        # We check both the context.author and context.author.roles to handle both Admins and Managers
         return any(role.id in STAFF_ROLES for role in ctx.author.roles)
     return commands.check(predicate)
 
-# --- 🎫 PHASE 3: EVENT LOGGING ---
-@bot.event
-async def on_ready():
-    # Set a custom status on Discord
-    await bot.change_presence(activity=discord.Game(name="Watching KeyZone Vault 🔑"))
-    print(f'✅ KeyZone Vault has logged in as {bot.user}')
-
-# --- 🛒 PHASE 4: SHOPPING COMMANDS ---
-@bot.command(name="post_game")
+@bot.command(name="post")
 @is_staff()
-async def post_game(ctx, name, msrp: float, our_price: float, image_url):
-    # Security: Double-check channel permissions if needed
+async def post_game(ctx, name, msrp: float, price: float, image_url):
+    """The Ultimate Post Command: ?post 'Game Name' 60 15 URL"""
+    savings = round(((msrp - price) / msrp) * 100)
+    stock = random.randint(1, 10)
     
-    # Automatic Savings Calculator (Calculates % saved)
-    savings = round(((msrp - our_price) / msrp) * 100)
-    
-    # Automatic Stock Generator (1-10 Keys as requested)
-    stock_count = random.randint(1, 10)
-    
-    # Create the beautiful, professional Red-themed embed
     embed = discord.Embed(
-        title=f"🎮 {name}",
+        title=f"🔥 {name.upper()}",
         description=(
-            f"❌ MSRP: ~~${msrp:.2f}~~\n"
-            f"✅ **KeyZone Price: ${our_price:.2f}**\n"
-            f"🔥 **OFF: {savings}% SAVED!**\n\n"
-            f"📦 **Stock:** {stock_count} keys left\n"
             f"━━━━━━━━━━━━━━━━━━\n"
-            f"📍 **Region:** Global\n"
-            f"🔑 **Platform:** Steam Digital Key"
+            f"💰 **MSRP:** ~~${msrp:.2f}~~\n"
+            f"✅ **KEYZONE:** **${price:.2f}**\n"
+            f"⚡ **SAVINGS:** `{savings}% OFF`\n"
+            f"━━━━━━━━━━━━━━━━━━\n"
+            f"📦 **STOCK:** {stock} keys available\n"
+            f"🌍 **REGION:** Global / Steam\n"
+            f"━━━━━━━━━━━━━━━━━━"
         ),
-        color=0xff0000 # Matching your #support-center black/red style
+        color=0xff0000
     )
-    # This is the standard cover art from your wishlist images
-    embed.set_thumbnail(url=image_url)
-    
-    # Standard footer text points to support for purchase
-    embed.set_footer(text="To purchase, click 'Buy Keys' in #support-center!")
-    
-    # Get the target channels
-    shop_channel = bot.get_channel(STEAM_KEYS_CHANNEL)
-    log_channel = bot.get_channel(NEW_GAME_LOGS)
-    
-    # Check if channels exist before trying to send
-    if not shop_channel:
-        return await ctx.send("❌ Error: Could not find the `#steam-keys` channel. Is the ID correct?")
+    embed.set_image(url=image_url) # Larger image for better conversion
+    embed.set_footer(text=f"Posted by {ctx.author.name} • Trusted Key Seller", icon_url=ctx.author.avatar.url if ctx.author.avatar else None)
 
-    # Send the main post
-    await shop_channel.send(embed=embed)
+    shop_chan = bot.get_channel(STEAM_KEYS_CHANNEL)
+    log_chan = bot.get_channel(NEW_GAME_LOGS)
     
-    # Send a separate confirmation log for your private staff channel
-    if log_channel:
-        await log_channel.send(f"📝 **Vault Log:** {ctx.author.name} posted `{name}` to {shop_channel.mention}.")
+    await shop_chan.send(embed=embed, view=PersistentBuyView())
+    if log_chan:
+        await log_chan.send(f"✅ **NEW LISTING:** `{name}` posted by {ctx.author.mention} (${price})")
     
-    # Optional staff feedback
-    await ctx.send(f"✅ Posted **{name}** to {shop_channel.mention} with {stock_count} keys!")
+    await ctx.message.delete() # Cleans up the staff channel
 
-# --- 🚀 RUN ---
-# Pull the safe token from Render's "Environment Variables"
-token = os.getenv("DISCORD_TOKEN")
-if token:
-    bot.run(token)
-else:
-    print("❌ ERROR: `DISCORD_TOKEN` not found in environment variables.")
-    
+# --- 🚀 PHASE 5: POWER ON ---
+if __name__ == "__main__":
+    # Start Web Server
+    Thread(target=run_server).start()
+    # Start Bot
+    token = os.getenv("DISCORD_TOKEN")
+    if token:
+        bot.run(token)
+    else:
+        print("❌ CRITICAL ERROR: NO DISCORD_TOKEN FOUND")
+        
