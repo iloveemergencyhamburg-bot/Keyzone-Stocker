@@ -1,4 +1,10 @@
-import discord from discord.ext import commands, tasks import random import string import sqlite3 import time
+import discord
+from discord.ext import commands, tasks
+import random
+import string
+import sqlite3
+import time
+import os
 
 intents = discord.Intents.default() intents.message_content = True intents.guilds = True intents.members = True
 
